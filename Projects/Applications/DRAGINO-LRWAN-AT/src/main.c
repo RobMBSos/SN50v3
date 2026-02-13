@@ -987,20 +987,32 @@ static void Send( void )
     AppData.Buff[i++] = (bsp_sensor_data_buff.ads_raw >> 8) & 0xFF;
     AppData.Buff[i++] = bsp_sensor_data_buff.ads_raw & 0xFF;
     
-    // 8-11: Voltage in microvolts (calculated from raw value)
-    // Use int32_t to avoid overflow issues
-    int32_t voltage_int = (int32_t)((bsp_sensor_data_buff.ads_raw * 2.048 / (8388608.0 * 32.0)) * 1000000);
-    AppData.Buff[i++] = (voltage_int >> 24) & 0xFF;
-    AppData.Buff[i++] = (voltage_int >> 16) & 0xFF;
-    AppData.Buff[i++] = (voltage_int >> 8) & 0xFF;
-    AppData.Buff[i++] = voltage_int & 0xFF;
+    // 8-11: Dendrometer voltage in microvolts (external reference, gain 64)
+    int32_t dendro_voltage_uv = (int32_t)((bsp_sensor_data_buff.ads_raw * 2500000.0f) / (8388608.0f * 64.0f));
+    AppData.Buff[i++] = (dendro_voltage_uv >> 24) & 0xFF;
+    AppData.Buff[i++] = (dendro_voltage_uv >> 16) & 0xFF;
+    AppData.Buff[i++] = (dendro_voltage_uv >> 8) & 0xFF;
+    AppData.Buff[i++] = dendro_voltage_uv & 0xFF;
     
     // 12-15: Displacement in centimillimeters
-    int32_t displacement_int = (int32_t)(bsp_sensor_data_buff.ads_mv * 1000);
+    int32_t displacement_int = (int32_t)(bsp_sensor_data_buff.ads_mv * 1000.0f);
     AppData.Buff[i++] = (displacement_int >> 24) & 0xFF;
     AppData.Buff[i++] = (displacement_int >> 16) & 0xFF;
     AppData.Buff[i++] = (displacement_int >> 8) & 0xFF;
     AppData.Buff[i++] = displacement_int & 0xFF;
+
+    // 16-19: Teros channel raw ADC value (AIN2-AVSS, gain 2, PGA bypass)
+    AppData.Buff[i++] = (bsp_sensor_data_buff.ads_raw2 >> 24) & 0xFF;
+    AppData.Buff[i++] = (bsp_sensor_data_buff.ads_raw2 >> 16) & 0xFF;
+    AppData.Buff[i++] = (bsp_sensor_data_buff.ads_raw2 >> 8) & 0xFF;
+    AppData.Buff[i++] = bsp_sensor_data_buff.ads_raw2 & 0xFF;
+
+    // 20-23: Teros channel voltage in microvolts
+    int32_t teros_voltage_uv = (int32_t)(bsp_sensor_data_buff.ads_mv2 * 1000.0f);
+    AppData.Buff[i++] = (teros_voltage_uv >> 24) & 0xFF;
+    AppData.Buff[i++] = (teros_voltage_uv >> 16) & 0xFF;
+    AppData.Buff[i++] = (teros_voltage_uv >> 8) & 0xFF;
+    AppData.Buff[i++] = teros_voltage_uv & 0xFF;
 	}
 
 	

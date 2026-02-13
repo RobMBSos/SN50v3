@@ -148,9 +148,13 @@ int16_t ads1115_read_differential(void);
 //float ads1115_convert_to_mv(int16_t raw_adc);
 float ads1115_convert_to_mm(int16_t raw_adc);
 uint8_t check_ads122c04_connect(void); 
+uint8_t ads122c04_read_register(uint8_t reg);
+void ads122c04_configure(void);
 int32_t ads122c04_read_raw(void); 
 float ads122c04_to_mm(int32_t raw_adc);
 void ads122c04_read_displacement(int32_t* raw_out, float* voltage_mv_out, float* filtered_disp_out);
+void ads122c04_read_dual_sensor(int32_t* dendro_raw_out, float* dendro_mv_out, float* dendro_disp_mm_out,
+                                int32_t* teros_raw_out, float* teros_mv_out);
 
 
 // External variable declaration

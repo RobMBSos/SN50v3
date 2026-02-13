@@ -591,17 +591,23 @@ void BSP_sensor_Read( sensor_t *sensor_data , uint8_t message ,uint8_t mod_temp)
     // Always reconfigure before reading
     ads122c04_configure();
     
-    // Take multiple readings and average for stability
-    int32_t raw;
-    float voltage_mv, disp_filtered;
-    ads122c04_read_displacement(&raw, &voltage_mv, &disp_filtered);
+    // Read both channels:
+    // Dendrometer = AIN0-AIN1 (gain 64, PGA enabled)
+    // Teros 10 = AIN2-AVSS (gain 2, PGA bypass)
+    int32_t dendro_raw, teros_raw;
+    float dendro_mv, disp_filtered, teros_mv;
+    ads122c04_read_dual_sensor(&dendro_raw, &dendro_mv, &disp_filtered, &teros_raw, &teros_mv);
     
-    sensor_data->ads_raw = raw;
+    sensor_data->ads_raw = dendro_raw;
     sensor_data->ads_mv = disp_filtered;
+    sensor_data->ads_raw2 = teros_raw;
+    sensor_data->ads_mv2 = teros_mv;
     
     if (message == 1) {
-        LOG_PRINTF(LL_DEBUG, "ADS122C04 Raw: %ld, Voltage: %.3f mV, Displacement: %.3f mm (Filtered: %.3f mm)\r\n",
-            raw, voltage_mv, -1.538f * voltage_mv, disp_filtered);
+        LOG_PRINTF(LL_DEBUG, "ADS122C04 Dendro Raw: %ld, Voltage: %.3f mV, Displacement (filtered): %.3f mm\r\n",
+            dendro_raw, dendro_mv, disp_filtered);
+        LOG_PRINTF(LL_DEBUG, "ADS122C04 Teros Raw: %ld, Voltage: %.3f mV\r\n",
+            teros_raw, teros_mv);
     }
     
     I2C_GPIO_MODE_ANALOG();

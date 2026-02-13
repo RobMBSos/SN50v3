@@ -27,7 +27,22 @@
 #include "I2C_A.h"
 #include "bsp.h"
 
-#define ADS1115_CONFIG 0x8B83  // Single-shot mode, differential AIN0-AIN1, ±0.256V, 128 SPS, comparator disabled
+#define ADS1115_CONFIG 0x8B83  // Single-shot mode, differential AIN0-AIN1, +-0.256V, 128 SPS, comparator disabled
+#define ADS122C04_CMD_RESET       0x06
+#define ADS122C04_CMD_START_SYNC  0x08
+#define ADS122C04_CMD_RDATA       0x10
+
+#define ADS122C04_CFG0_DENDRO     0x0C  // MUX AIN0-AIN1, Gain 64, PGA enabled
+#define ADS122C04_CFG0_TEROS      0xA3  // MUX AIN2-AVSS, Gain 2, PGA_BYPASS=1
+#define ADS122C04_CFG1_COMMON     0x02  // DR=20SPS, MODE=normal, CM=single-shot, VREF=REFP/REFN
+#define ADS122C04_CFG2_COMMON     0x00
+#define ADS122C04_CFG3_COMMON     0x00
+
+#define ADS122C04_DENDRO_GAIN     64.0f
+#define ADS122C04_TEROS_GAIN      2.0f
+#define ADS122C04_EXT_REF_MV      2500.0f
+#define ADS122C04_FS_CODE         8388608.0f
+#define ADS122C04_RAW_ERROR       ((int32_t)0x7FFFFF)
 
 static float displacementFiltered = 0.0f;
 static bool firstRun = true;
@@ -670,26 +685,13 @@ float ads1115_convert_to_mm(int16_t raw_adc) {
 }
 
 
-uint8_t check_ads122c04_connect(void) {
-    uint8_t check_number = 0;
-    uint8_t cmd = 0x06;
-
-    while (check_number++ < 4) {
-        LOG_PRINTF(LL_DEBUG, "Attempt %d: Writing 0x%02X to addr 0x%02X\r\n", check_number, cmd, ADS122C04_ADDR);
-        if (I2C_Write_Len(ADS122C04_ADDR, 0x00, 1, &cmd) == 0) {
-            LOG_PRINTF(LL_DEBUG, "ADS122C04 detected on attempt %d\r\n", check_number);
-            return 1;
-        } else {
-            LOG_PRINTF(LL_DEBUG, "I2C write failed on attempt %d\r\n", check_number);
-        }
-        delay_ms(20);
-    }
-
-    return 0;
+static bool ads122c04_send_command(uint8_t cmd)
+{
+    return (I2C_Write_Len(ADS122C04_ADDR, 0x00, 1, &cmd) == 0);
 }
 
-
-void ads122c04_write_register(uint8_t reg, uint8_t value) {
+void ads122c04_write_register(uint8_t reg, uint8_t value)
+{
     uint8_t cmd = 0x40 | (reg << 2);  // WREG command
 
     I2C_Start();
@@ -705,9 +707,8 @@ void ads122c04_write_register(uint8_t reg, uint8_t value) {
     I2C_Stop();
 }
 
-
-
-uint8_t ads122c04_read_register(uint8_t reg) {
+uint8_t ads122c04_read_register(uint8_t reg)
+{
     uint8_t cmd = 0x20 | (reg << 2);  // RREG command
     uint8_t value = 0;
 
@@ -728,105 +729,198 @@ uint8_t ads122c04_read_register(uint8_t reg) {
     return value;
 }
 
-
-void ads122c04_configure(void) {
-    uint8_t reset_cmd = 0x06;
-    I2C_Write_Len(ADS122C04_ADDR, 0x00, 1, &reset_cmd);
-    delay_ms(10);  // wait after reset
-
-    ads122c04_write_register(0x00, 0x0C);  // CONFIG0: Gain 32
-    ads122c04_write_register(0x01, 0x04);  // CONFIG1: 20 SPS, normal mode
-    ads122c04_write_register(0x02, 0x00);  // CONFIG2: default
-    ads122c04_write_register(0x03, 0x00);  // CONFIG3: default
+static void ads122c04_apply_profile(uint8_t cfg0)
+{
+    ads122c04_write_register(0x00, cfg0);
+    ads122c04_write_register(0x01, ADS122C04_CFG1_COMMON);
+    ads122c04_write_register(0x02, ADS122C04_CFG2_COMMON);
+    ads122c04_write_register(0x03, ADS122C04_CFG3_COMMON);
 }
 
-
-
-
-int32_t ads122c04_read_raw_exact(void)
+static bool ads122c04_wait_drdy(uint16_t timeout_ms)
 {
-    uint8_t cmd;
+    while (timeout_ms--)
+    {
+        if ((ads122c04_read_register(0x02) & 0x80) != 0)  // DRDY bit in CONFIG2
+        {
+            return true;
+        }
+        delay_ms(1);
+    }
+
+    return false;
+}
+
+static bool ads122c04_read_rdata_raw(int32_t* raw_out)
+{
     uint8_t data[3] = {0};
-    int32_t adc = 0;
-    
-    // First, verify device is responsive
-    uint8_t reg0 = ads122c04_read_register(0);
-    if (reg0 != 0x0C) {
-        LOG_PRINTF(LL_DEBUG, "ADS122C04: Device not properly configured. Reg0=0x%02X\r\n", reg0);
-        ads122c04_configure();  // Try to reconfigure
-        delay_ms(10);
+
+    if (!ads122c04_send_command(ADS122C04_CMD_RDATA))
+    {
+        return false;
     }
 
-    // Step 1: Send START/SYNC command
-    cmd = 0x08;
-    if (I2C_Write_Len(ADS122C04_ADDR, 0x00, 1, &cmd) != 0) {
-        LOG_PRINTF(LL_DEBUG, "ADS122C04: START/SYNC failed\r\n");
-        return 0x7FFFFF;  // Error value
-    }
-
-    delay_ms(100);  // Wait for conversion to complete (increased from 60ms)
-
-    // Step 2: Send RDATA command
-    cmd = 0x10;
-    if (I2C_Write_Len(ADS122C04_ADDR, 0x00, 1, &cmd) != 0) {
-        LOG_PRINTF(LL_DEBUG, "ADS122C04: RDATA cmd failed\r\n");
-        return 0x7FFFFF;  // Error value
-    }
-
-    // Step 3: Direct read after RDATA (no register address needed)
     I2C_Start();
     I2C_SendByte((ADS122C04_ADDR << 1) | 1);  // Read mode
-    if (I2C_WaitAck()) {
-        LOG_PRINTF(LL_DEBUG, "ADS122C04: No ACK on read\r\n");
+    if (I2C_WaitAck())
+    {
         I2C_Stop();
-        return 0x7FFFFF;  // Error value
+        return false;
     }
-    
-    data[0] = I2C_ReadByte(1);  // Read byte 1 with ACK
-    data[1] = I2C_ReadByte(1);  // Read byte 2 with ACK
-    data[2] = I2C_ReadByte(0);  // Read byte 3 with NACK
+
+    data[0] = I2C_ReadByte(1);  // ACK
+    data[1] = I2C_ReadByte(1);  // ACK
+    data[2] = I2C_ReadByte(0);  // NACK
     I2C_Stop();
 
-    LOG_PRINTF(LL_DEBUG, "ADS122C04 raw bytes: 0x%02X 0x%02X 0x%02X\r\n", 
-               data[0], data[1], data[2]);
-
-    adc = ((int32_t)data[0] << 16) | ((int32_t)data[1] << 8) | data[2];
-    if (adc & 0x800000) {
-        adc |= 0xFF000000;  // Sign extend negative 24-bit value
+    if (raw_out)
+    {
+        int32_t adc = ((int32_t)data[0] << 16) | ((int32_t)data[1] << 8) | data[2];
+        if (adc & 0x800000)
+        {
+            adc |= 0xFF000000;  // Sign extend 24-bit value
+        }
+        *raw_out = adc;
     }
 
-    return adc;
+    return true;
 }
 
+static bool ads122c04_read_channel(uint8_t cfg0, int32_t* raw_out)
+{
+    ads122c04_apply_profile(cfg0);
 
-int32_t ads122c04_read_filtered(uint8_t samples) {
-    int32_t sum = 0;
-    for (uint8_t i = 0; i < samples; i++) {
-        sum += ads122c04_read_raw();
+    if (!ads122c04_send_command(ADS122C04_CMD_START_SYNC))
+    {
+        return false;
     }
-    return sum / samples;
+
+    if (!ads122c04_wait_drdy(120))
+    {
+        return false;
+    }
+
+    return ads122c04_read_rdata_raw(raw_out);
+}
+
+static bool ads122c04_read_channel_average(uint8_t cfg0, uint8_t samples, int32_t* raw_out)
+{
+    int64_t sum = 0;
+    uint8_t valid = 0;
+
+    for (uint8_t i = 0; i < samples; i++)
+    {
+        int32_t raw = 0;
+
+        if (ads122c04_read_channel(cfg0, &raw))
+        {
+            sum += raw;
+            valid++;
+        }
+    }
+
+    if (valid == 0)
+    {
+        return false;
+    }
+
+    if (raw_out)
+    {
+        *raw_out = (int32_t)(sum / valid);
+    }
+
+    return true;
+}
+
+static float ads122c04_raw_to_mv(int32_t raw_adc, float gain)
+{
+    return ((float)raw_adc * ADS122C04_EXT_REF_MV) / (ADS122C04_FS_CODE * gain);
+}
+
+uint8_t check_ads122c04_connect(void)
+{
+    for (uint8_t attempt = 0; attempt < 4; attempt++)
+    {
+        if (ads122c04_send_command(ADS122C04_CMD_RESET))
+        {
+            delay_ms(5);
+            return 1;
+        }
+
+        delay_ms(20);
+    }
+
+    return 0;
+}
+
+void ads122c04_configure(void)
+{
+    ads122c04_send_command(ADS122C04_CMD_RESET);
+    delay_ms(5);
+    ads122c04_apply_profile(ADS122C04_CFG0_DENDRO);
+}
+
+int32_t ads122c04_read_raw(void)
+{
+    int32_t raw = ADS122C04_RAW_ERROR;
+
+    if (!ads122c04_read_channel(ADS122C04_CFG0_DENDRO, &raw))
+    {
+        return ADS122C04_RAW_ERROR;
+    }
+
+    return raw;
+}
+
+float ads122c04_to_mm(int32_t raw_adc)
+{
+    return -1.538f * ads122c04_raw_to_mv(raw_adc, ADS122C04_DENDRO_GAIN);
+}
+
+void ads122c04_read_dual_sensor(int32_t* dendro_raw_out, float* dendro_mv_out, float* dendro_disp_mm_out,
+                                int32_t* teros_raw_out, float* teros_mv_out)
+{
+    int32_t dendro_raw = ADS122C04_RAW_ERROR;
+    int32_t teros_raw = ADS122C04_RAW_ERROR;
+    float dendro_mv = 3276.7f;
+    float teros_mv = 3276.7f;
+    float filtered_disp = 3276.7f;
+
+    if (ads122c04_read_channel_average(ADS122C04_CFG0_DENDRO, 8, &dendro_raw))
+    {
+        float displacement;
+
+        dendro_mv = ads122c04_raw_to_mv(dendro_raw, ADS122C04_DENDRO_GAIN);
+        displacement = -1.538f * dendro_mv;
+
+        if (firstRun)
+        {
+            displacementFiltered = displacement;
+            firstRun = false;
+        }
+        else
+        {
+            displacementFiltered = damping * displacementFiltered + (1.0f - damping) * displacement;
+        }
+
+        filtered_disp = displacementFiltered;
+    }
+
+    if (ads122c04_read_channel_average(ADS122C04_CFG0_TEROS, 2, &teros_raw))
+    {
+        teros_mv = ads122c04_raw_to_mv(teros_raw, ADS122C04_TEROS_GAIN);
+    }
+
+    if (dendro_raw_out) { *dendro_raw_out = dendro_raw; }
+    if (dendro_mv_out) { *dendro_mv_out = dendro_mv; }
+    if (dendro_disp_mm_out) { *dendro_disp_mm_out = filtered_disp; }
+    if (teros_raw_out) { *teros_raw_out = teros_raw; }
+    if (teros_mv_out) { *teros_mv_out = teros_mv; }
 }
 
 void ads122c04_read_displacement(int32_t* raw_out, float* voltage_mv_out, float* filtered_disp_out)
 {
-    int32_t raw = 0;
-		for (int i = 0; i < 8; i++) {
-			raw += ads122c04_read_raw_exact();
-		}
-		raw /= 8;
-    float voltage_mv = (float)raw * 2.048f / (8388608.0f * 32) * 1000.0f;
-    float displacement = -1.538f * voltage_mv;
-
-    if (firstRun) {
-        displacementFiltered = displacement;
-        firstRun = false;
-    } else {
-        displacementFiltered = damping * displacementFiltered + (1.0f - damping) * displacement;
-    }
-
-    if (raw_out) *raw_out = raw;
-    if (voltage_mv_out) *voltage_mv_out = voltage_mv;
-    if (filtered_disp_out) *filtered_disp_out = displacementFiltered;
+    ads122c04_read_dual_sensor(raw_out, voltage_mv_out, filtered_disp_out, NULL, NULL);
 }
 
 /******************* (C) COPYRIGHT 2011 STMicroelectronics *****END OF FILE****/

@@ -105,6 +105,10 @@ typedef struct{
   
 	float ads_mv;       // Voltage in mV
 
+	int32_t ads_raw2;   // ADS122C04 channel 2 raw ADC value
+
+	float ads_mv2;      // ADS122C04 channel 2 voltage in mV
+
 	float temp_sht;
 	
 	float hum_sht;
