@@ -81,6 +81,36 @@ Maintainer: Miguel Luis and Gregory Cristian
  */
 	 
 #include "bsp.h"
+
+// MLX90614 Definitions
+#define MLX90614_ADDR     0x5A        // Default I2C address
+#define MLX90614_TA_REG   0x06        // Ambient temperature register
+#define MLX90614_TOBJ1_REG 0x07       // Object temperature register
+
+// ADS1115 definitions 
+#define ADS1115_ADDR              0x48    // Default I2C address
+
+// Registers
+#define ADS1115_REG_POINTER_CONVERT   0x00
+#define ADS1115_REG_POINTER_CONFIG    0x01
+
+// Config register bit definitions
+#define ADS1115_CONFIG_OS_MASK        0x8000
+#define ADS1115_CONFIG_MUX_MASK       0x7000
+#define ADS1115_CONFIG_PGA_MASK       0x0E00
+#define ADS1115_CONFIG_MODE_MASK      0x0100
+
+// Config values
+#define ADS1115_CONFIG_MODE_SINGLE    0x0100  // Single-shot mode
+#define ADS1115_CONFIG_PGA_6_144V     0x0000  // +/-6.144V range = Gain 2/3
+#define ADS1115_CONFIG_MUX_DIFF_0_1   0x0000  // Differential P = AIN0, N = AIN1
+#define ADS1115_CONFIG_DR_128SPS      0x0080  // 128 samples per second
+#define ADS1115_CONFIG_OS_SINGLE      0x8000  // Write: Start a single conversion
+
+
+
+#define ADS122C04_ADDR  0x40 
+
 	 
 typedef struct{
 	
@@ -110,6 +140,21 @@ void I2C_read_data(sensor_t *sensor_data,uint8_t flag_temp, uint8_t message);
 void LidarLite_init(void);
 uint16_t LidarLite(void);
 uint16_t waitbusy(uint8_t mode);
+// MLX90614 Function Prototypes
+uint8_t check_mlx90614_connect(uint8_t devAddr);
+float MLX90614_ReadTemp(uint8_t devAddr, uint8_t regAddr);
+uint8_t check_ads1115_connect(void);
+int16_t ads1115_read_differential(void);
+//float ads1115_convert_to_mv(int16_t raw_adc);
+float ads1115_convert_to_mm(int16_t raw_adc);
+uint8_t check_ads122c04_connect(void); 
+int32_t ads122c04_read_raw(void); 
+float ads122c04_to_mm(int32_t raw_adc);
+void ads122c04_read_displacement(int32_t* raw_out, float* voltage_mv_out, float* filtered_disp_out);
+
+
+// External variable declaration
+extern uint8_t mlx_flag;
 
 #ifdef __cplusplus
 }

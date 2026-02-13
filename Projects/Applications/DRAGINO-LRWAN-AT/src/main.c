@@ -934,6 +934,75 @@ static void Send( void )
 		AppData.Buff[i++] = 0x00;   
 		AppData.Buff[i++] = 0x00; 
 	}
+	else if(workmode==12)
+	{	
+    // Battery voltage
+    AppData.Buff[i++] = (bsp_sensor_data_buff.bat_mv>>8);       
+    AppData.Buff[i++] = bsp_sensor_data_buff.bat_mv & 0xFF;
+    
+    // Set workmode identifier (0x2C = 44 in decimal)
+    AppData.Buff[i++] = 0x2C;  // simplified
+
+    // MLX90614 sensor 1 (0x5A address)
+    AppData.Buff[i++] = (int)(bsp_sensor_data_buff.temp2*10)>>8;      // Object temp
+    AppData.Buff[i++] = (int)(bsp_sensor_data_buff.temp2*10);
+    AppData.Buff[i++] = (int)(bsp_sensor_data_buff.temp2_ambient*10)>>8;   // Ambient temp
+    AppData.Buff[i++] = (int)(bsp_sensor_data_buff.temp2_ambient*10);
+    
+    // MLX90614 sensor 2 (0x5B address)
+    AppData.Buff[i++] = (int)(bsp_sensor_data_buff.temp3*10)>>8;   // Object temp
+    AppData.Buff[i++] = (int)(bsp_sensor_data_buff.temp3*10);
+    AppData.Buff[i++] = (int)(bsp_sensor_data_buff.temp3_ambient*10)>>8;   // Ambient temp
+    AppData.Buff[i++] = (int)(bsp_sensor_data_buff.temp3_ambient*10);
+	}
+	else if(workmode == 13)
+	{
+    AppData.Buff[i++] = (bsp_sensor_data_buff.bat_mv >> 8);       
+    AppData.Buff[i++] = bsp_sensor_data_buff.bat_mv & 0xFF;
+    
+    // Set workmode identifier (0x34 = 52 in decimal)
+    AppData.Buff[i++] = 0x34;
+    
+    // Send raw ADC value (16-bit signed)
+    AppData.Buff[i++] = (bsp_sensor_data_buff.ads_raw >> 8);
+    AppData.Buff[i++] = bsp_sensor_data_buff.ads_raw & 0xFF;
+    
+    // Send voltage in mV (16-bit unsigned)
+    uint16_t voltage_int = (uint16_t)bsp_sensor_data_buff.ads_mv;
+    AppData.Buff[i++] = (voltage_int >> 8);
+    AppData.Buff[i++] = voltage_int & 0xFF;
+	}
+	else if(workmode == 14)
+	{
+    // 1-2: Battery voltage
+    AppData.Buff[i++] = (bsp_sensor_data_buff.bat_mv >> 8);       
+    AppData.Buff[i++] = bsp_sensor_data_buff.bat_mv & 0xFF;
+    
+    // 3: Sensor identifier
+    AppData.Buff[i++] = 0x3E;  // Identifier for ADS122C04
+    
+    // 4-7: Raw ADC value as 32-bit signed integer
+    AppData.Buff[i++] = (bsp_sensor_data_buff.ads_raw >> 24) & 0xFF;
+    AppData.Buff[i++] = (bsp_sensor_data_buff.ads_raw >> 16) & 0xFF;
+    AppData.Buff[i++] = (bsp_sensor_data_buff.ads_raw >> 8) & 0xFF;
+    AppData.Buff[i++] = bsp_sensor_data_buff.ads_raw & 0xFF;
+    
+    // 8-11: Voltage in microvolts (calculated from raw value)
+    // Use int32_t to avoid overflow issues
+    int32_t voltage_int = (int32_t)((bsp_sensor_data_buff.ads_raw * 2.048 / (8388608.0 * 32.0)) * 1000000);
+    AppData.Buff[i++] = (voltage_int >> 24) & 0xFF;
+    AppData.Buff[i++] = (voltage_int >> 16) & 0xFF;
+    AppData.Buff[i++] = (voltage_int >> 8) & 0xFF;
+    AppData.Buff[i++] = voltage_int & 0xFF;
+    
+    // 12-15: Displacement in centimillimeters
+    int32_t displacement_int = (int32_t)(bsp_sensor_data_buff.ads_mv * 1000);
+    AppData.Buff[i++] = (displacement_int >> 24) & 0xFF;
+    AppData.Buff[i++] = (displacement_int >> 16) & 0xFF;
+    AppData.Buff[i++] = (displacement_int >> 8) & 0xFF;
+    AppData.Buff[i++] = displacement_int & 0xFF;
+	}
+
 	
   AppData.BuffSize = i;
 	payloadlens=i;
@@ -1285,7 +1354,7 @@ static void LORA_RxData( lora_AppData_t *AppData )
 		{
 			if( AppData->BuffSize == 2 )         
 			{	
-				if((AppData->Buff[1]>=0x01)&&(AppData->Buff[1]<=0x0B))    //---->AT+MOD
+				if((AppData->Buff[1]>=0x01)&&(AppData->Buff[1]<=0x0E))    //---->AT+MOD
 				{
 					workmode=AppData->Buff[1];
 					downlink_config_store_in_flash=1;

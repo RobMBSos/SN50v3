@@ -28,12 +28,17 @@
 /* Private variables ---------------------------------------------------------*/
 
 #define VBAT_FACTOR     3.06f
+static float displacementFiltered = 0;
+static float damping = 0.95f;
+static bool firstRun = true;
 
 bool tmp117_connect_status;
 uint8_t icnumber=0;
 bool bh1750flags=0;
 uint8_t mode2_flag=0;
 static uint8_t flags=0;
+uint8_t ads_flag = 0;
+//uint8_t mlx_flag = 0;    // add this alongside other flags
 extern uint8_t workmode;
 extern uint8_t inmode,inmode2,inmode3;
 extern uint16_t power_5v_time;
@@ -181,6 +186,55 @@ void BSP_sensor_Init( void  )
 			delay_ms(30);		
 		}			
 	 }
+	 else if(workmode==12)
+	 {
+		I2C_GPIO_MODE_Config();
+		if(check_mlx90614_connect(0x5A)==1)
+		{
+			mlx_flag = 1;
+			LOG_PRINTF(LL_DEBUG,"\n\rUse Sensor is MLX90614\r\n");
+			delay_ms(30);
+		}
+		else
+		{
+			LOG_PRINTF(LL_DEBUG,"\n\rNo MLX90614 sensor detected\r\n");
+			delay_ms(20);
+		}
+			I2C_GPIO_MODE_ANALOG();
+		}
+	 else if(workmode==13)
+	{
+    I2C_GPIO_MODE_Config();
+    if(check_ads1115_connect()==1)
+    {
+        ads_flag = 1;
+        LOG_PRINTF(LL_DEBUG,"\n\rUse Sensor is ADS1115\r\n");
+        delay_ms(30);
+    }
+    else
+    {
+        LOG_PRINTF(LL_DEBUG,"\n\rNo ADS1115 detected\r\n");
+        delay_ms(20);
+    }
+    I2C_GPIO_MODE_ANALOG();
+	}
+		else if(workmode == 14)
+	{
+			I2C_GPIO_MODE_Config();
+			if (check_ads122c04_connect()) {
+        LOG_PRINTF(LL_DEBUG, "ADS122C04 detected.\r\n");
+        ads122c04_configure();
+
+        for (uint8_t i = 0; i < 4; i++) {
+            uint8_t val = ads122c04_read_register(i);
+            LOG_PRINTF(LL_DEBUG, "ADS122C04 Reg %d: 0x%02X\r\n", i, val);
+        }
+    } else {
+        LOG_PRINTF(LL_DEBUG, "ADS122C04 not detected.\r\n");
+    }
+			I2C_GPIO_MODE_ANALOG();
+	}
+
 	 
 	 if((workmode!=3)||(workmode!=8))
 	 {
@@ -464,8 +518,96 @@ void BSP_sensor_Read( sensor_t *sensor_data , uint8_t message ,uint8_t mod_temp)
 		sensor_data->ADC_4=ADC_Read(1,message);
 		sensor_data->in1=Digital_input_Read(3,message);
 		sensor_data->exit_pa8=Digital_input_Read(2,message);		
-	}		
-  POWER_IoDeInit();	
+	}
+	else if(mod_temp == 12)
+	{
+    // Initialize all temperatures to error value (0x7FFF = 32767)
+    sensor_data->temp2 = 3276.7;         // MLX1 Object temp
+    sensor_data->temp2_ambient = 3276.7;  // MLX1 Ambient temp
+    sensor_data->temp3 = 3276.7;         // MLX2 Object temp
+    sensor_data->temp3_ambient = 3276.7;  // MLX2 Ambient temp
+
+    I2C_GPIO_MODE_Config();
+
+    // Read from first MLX90614 (0x5A)
+    if(check_mlx90614_connect(0x5A))
+    {
+        sensor_data->temp2 = MLX90614_ReadTemp(0x5A, MLX90614_TOBJ1_REG);
+        sensor_data->temp2_ambient = MLX90614_ReadTemp(0x5A, MLX90614_TA_REG);
+        
+        if(message == 1)
+        {
+            LOG_PRINTF(LL_DEBUG, "MLX90614_1 Object: %.2f°C, Ambient: %.2f°C\r\n", 
+                      sensor_data->temp2, sensor_data->temp2_ambient);
+            delay_ms(20);
+        }
+    }
+
+    // Read from second MLX90614 (0x5B)
+    if(check_mlx90614_connect(0x5B))
+    {
+        sensor_data->temp3 = MLX90614_ReadTemp(0x5B, MLX90614_TOBJ1_REG);
+        sensor_data->temp3_ambient = MLX90614_ReadTemp(0x5B, MLX90614_TA_REG);
+        
+        if(message == 1)
+        {
+            LOG_PRINTF(LL_DEBUG, "MLX90614_2 Object: %.2f°C, Ambient: %.2f°C\r\n", 
+                      sensor_data->temp3, sensor_data->temp3_ambient);
+            delay_ms(20);
+        }
+    }
+    I2C_GPIO_MODE_ANALOG();
+		POWER_open_time(power_5v_time);
+    }
+	else if(mod_temp == 13)
+	{
+    I2C_GPIO_MODE_Config();
+    POWER_open_time(power_5v_time);
+    delay_ms(50);  // Give power supply time to stabilize
+    
+    // Read differential voltage
+    int16_t raw_adc = ads1115_read_differential();
+    float voltage_mv = ads1115_convert_to_mm(raw_adc);
+    
+    sensor_data->ads_raw = raw_adc;
+    sensor_data->ads_mv = voltage_mv;
+    
+    if(message == 1)
+    {
+        LOG_PRINTF(LL_DEBUG, "ADS1115 Raw: %d (0x%04X), Voltage: %.1f mV\r\n", 
+                  raw_adc, (uint16_t)raw_adc, voltage_mv);
+        delay_ms(20);
+    }
+    
+    I2C_GPIO_MODE_ANALOG();
+	}
+	else if (mod_temp == 14)
+	{
+    POWER_open_time(power_5v_time);
+    delay_ms(300);  // Keep this increased stabilization time
+    
+    I2C_GPIO_MODE_Config();
+    
+    // Always reconfigure before reading
+    ads122c04_configure();
+    
+    // Take multiple readings and average for stability
+    int32_t raw;
+    float voltage_mv, disp_filtered;
+    ads122c04_read_displacement(&raw, &voltage_mv, &disp_filtered);
+    
+    sensor_data->ads_raw = raw;
+    sensor_data->ads_mv = disp_filtered;
+    
+    if (message == 1) {
+        LOG_PRINTF(LL_DEBUG, "ADS122C04 Raw: %ld, Voltage: %.3f mV, Displacement: %.3f mm (Filtered: %.3f mm)\r\n",
+            raw, voltage_mv, -1.538f * voltage_mv, disp_filtered);
+    }
+    
+    I2C_GPIO_MODE_ANALOG();
+    POWER_IoDeInit();
+	}
+POWER_IoDeInit();
 }
 
 uint16_t battery_voltage_measurement(void)

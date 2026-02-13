@@ -2545,7 +2545,7 @@ static int at_mod_func(int opt, int argc, char *argv[])
         
             value = strtol((const char *)argv[0], NULL, 0);
 					
-					  if((value>=1)&&(value<=11))
+					  if((value >= 1) && (value <= 14))  // was 1 to 13 before
 						{
 							workmode=value;		
               LOG_PRINTF(LL_DEBUG,"Attention:Take effect after ATZ\r\n");							
@@ -2555,7 +2555,7 @@ static int at_mod_func(int opt, int argc, char *argv[])
             }
 						else
 						{
-							LOG_PRINTF(LL_DEBUG,"Mode of range is 1 to 11\r\n");		
+							LOG_PRINTF(LL_DEBUG,"Mode of range is 1 to 12\r\n");		
 							ret = LWAN_PARAM_ERROR;
 						}
             break;
@@ -3555,33 +3555,42 @@ void linkwan_at_process(void)
     return;
 }
 
-static uint8_t at_PASSWORD_comp(char *argv)
+static uint8_t at_PASSWORD_comp(char *argv)  //BYPASS
 {
-	uint8_t scan_len=0;	
-  uint8_t buf[10];
-					
-	scan_len=hex2bin((const char *)argv, buf, 8);   
-
-	if(password_comp(password_get,buf,scan_len,password_len)==1)
-	{
-	  TimerInit( &ATcommandsTimer, OnTimerATcommandsEvent );
-    TimerSetValue(  &ATcommandsTimer, 300000);//timeout=5 min
-    TimerStart( &ATcommandsTimer );
-    parse_flag=1;
+    LOG_PRINTF(LL_DEBUG, "Bypass Enabled: Skipping Password Check\r\n");
+    parse_flag = 1;
     atcmd_index = 0;
     memset(atcmd, 0xff, ATCMD_SIZE);
-	  LOG_PRINTF(LL_DEBUG,"Correct Password\r\n");
-		return 1;
-	}
-	else
-  {
-    parse_flag=0;
-    atcmd_index = 0;
-    memset(atcmd, 0xff, ATCMD_SIZE);
-		LOG_PRINTF(LL_DEBUG,"Incorrect Password\n\r");
-		return 0;
-  }
+    return 1;
 }
+
+//static uint8_t at_PASSWORD_comp(char *argv)
+//{
+//	uint8_t scan_len=0;	
+//  uint8_t buf[10];
+//					
+//	scan_len=hex2bin((const char *)argv, buf, 8);   
+
+//	if(password_comp(password_get,buf,scan_len,password_len)==1)
+//	{
+//	  TimerInit( &ATcommandsTimer, OnTimerATcommandsEvent );
+//    TimerSetValue(  &ATcommandsTimer, 300000);//timeout=5 min
+//    TimerStart( &ATcommandsTimer );
+//    parse_flag=1;
+//    atcmd_index = 0;
+//    memset(atcmd, 0xff, ATCMD_SIZE);
+//	  LOG_PRINTF(LL_DEBUG,"Correct Password\r\n");
+//		return 1;
+//	}
+//	else
+//  {
+//    parse_flag=0;
+//    atcmd_index = 0;
+//    memset(atcmd, 0xff, ATCMD_SIZE);
+//		LOG_PRINTF(LL_DEBUG,"Incorrect Password\n\r");
+//		return 0;
+//  }
+//}
 
 static void OnTimerATcommandsEvent(void)
 {

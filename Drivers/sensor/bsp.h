@@ -70,6 +70,12 @@ Maintainer: Miguel Luis and Gregory Cristian
 #include <stdint.h>
 #include <stdbool.h>
 	 
+extern uint8_t mlx_flag;
+extern uint8_t ads_flag;
+#define MLX90614_ADDR     0x5A
+#define MLX90614_TA_REG   0x06
+#define MLX90614_TOBJ1_REG 0x07
+	 
 typedef struct{
   bool in1;
 	
@@ -81,15 +87,23 @@ typedef struct{
 	
 	float temp1;
 
-	float temp2;
-
-	float temp3;
+	float temp2;           // MLX1 Object temperature
+  
+	float temp2_ambient;   // MLX1 Ambient temperature
+  
+	float temp3;           // MLX2 Object temperature
+  
+	float temp3_ambient;   // MLX2 Ambient temperature
 	
 	float ADC_4; 
 
 	float ADC_5; 
 	
 	float ADC_8; 
+	
+	int32_t ads_raw;    // Raw ADC value
+  
+	float ads_mv;       // Voltage in mV
 
 	float temp_sht;
 	

@@ -655,6 +655,8 @@ void region_printf(void)
 void key_printf(void)
 {
   LOG_PRINTF(LL_DEBUG,"DevEui= %02X %02X %02X %02X %02X %02X %02X %02X\n\r", HEX8(lora_config.DevEui));
+	LOG_PRINTF(LL_DEBUG,"AppEui= %02X %02X %02X %02X %02X %02X %02X %02X\n\r", HEX8(lora_config.AppEui));
+	LOG_PRINTF(LL_DEBUG,"AppKey= %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X\n\r", HEX16(lora_config.AppKey));
 }
 
 void LORA_Join( void)
