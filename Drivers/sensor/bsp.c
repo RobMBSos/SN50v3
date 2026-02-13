@@ -46,6 +46,7 @@ extern uint32_t count1,count2;
 extern uint8_t pwm_timer;
 extern uint16_t IC1[4],IC2[4];
 static float tmp117_temp_record=10;
+static uint16_t battery_mv_last_valid = 3600;
 
 void BLE_power_Init(void)
 {
@@ -616,23 +617,55 @@ void BSP_sensor_Read( sensor_t *sensor_data , uint8_t message ,uint8_t mod_temp)
 POWER_IoDeInit();
 }
 
+static uint16_t median3_u16(uint16_t a, uint16_t b, uint16_t c)
+{
+	uint16_t temp;
+
+	if (a > b) { temp = a; a = b; b = temp; }
+	if (a > c) { temp = a; a = c; c = temp; }
+	if (b > c) { temp = b; b = c; c = temp; }
+
+	return b;
+}
+
 uint16_t battery_voltage_measurement(void)
 {
 	uint16_t bat_mv;
+	uint16_t sample_mv[3];
 
 	#if defined LB_LS
-  bat_mv=6*adc_in1_measurement(ADC_SOLAR_LEVEL_PORT,ADC_SOLAR_LEVEL_PIN,GPIO_SOLAR_BAT_CHANNEL);	
+	for (uint8_t i = 0; i < 3; i++)
+	{
+		sample_mv[i] = 6 * adc_in1_measurement(ADC_SOLAR_LEVEL_PORT, ADC_SOLAR_LEVEL_PIN, GPIO_SOLAR_BAT_CHANNEL);
+		delay_ms(2);
+	}
 	#else
 	gpio_set_iomux(ADC_BAT_OUTPUT_PORT, ADC_BAT_OUTPUT_PIN, 0);
-	gpio_init(ADC_BAT_OUTPUT_PORT, ADC_BAT_OUTPUT_PIN, GPIO_MODE_OUTPUT_PP_LOW);	
-	
-  bat_mv=6*adc_in1_measurement(ADC_BAT_LEVEL_PORT,ADC_BAT_LEVEL_PIN,GPIO_ADC_BAT_CHANNEL);
+	gpio_init(ADC_BAT_OUTPUT_PORT, ADC_BAT_OUTPUT_PIN, GPIO_MODE_OUTPUT_PP_LOW);
+	delay_ms(3);
 
-//	LOG_PRINTF(LL_DEBUG,"%d\r\n",adc_in1_measurement(ADC_BAT_LEVEL_PORT,ADC_BAT_LEVEL_PIN,GPIO_ADC_BAT_CHANNEL));
-	
+	for (uint8_t i = 0; i < 3; i++)
+	{
+		sample_mv[i] = 6 * adc_in1_measurement(ADC_BAT_LEVEL_PORT, ADC_BAT_LEVEL_PIN, GPIO_ADC_BAT_CHANNEL);
+		delay_ms(2);
+	}
+
 	gpio_set_iomux(ADC_BAT_OUTPUT_PORT, ADC_BAT_OUTPUT_PIN, 0);
-	gpio_init(ADC_BAT_OUTPUT_PORT, ADC_BAT_OUTPUT_PIN, GPIO_MODE_ANALOG);	
-	#endif		
+	gpio_init(ADC_BAT_OUTPUT_PORT, ADC_BAT_OUTPUT_PIN, GPIO_MODE_ANALOG);
+	#endif
+
+	bat_mv = median3_u16(sample_mv[0], sample_mv[1], sample_mv[2]);
+
+	// Reject impossible glitch values and keep the most recent sane reading.
+	if ((bat_mv == 0) || (bat_mv > 5000))
+	{
+		bat_mv = battery_mv_last_valid;
+	}
+	else
+	{
+		battery_mv_last_valid = bat_mv;
+	}
+
 	return bat_mv;
 }
 
@@ -790,3 +823,4 @@ uint16_t middle_value(uint16_t value[])
 	return b;
 }
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
+
