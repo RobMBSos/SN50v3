@@ -42,8 +42,6 @@ void weightreset(void);
 static char ReceivedData[255];
 static unsigned ReceivedDataSize = 0;
 static uint8_t ReceivedDataPort=0;
-static TimerEvent_t ATcommandsTimer;
-static void OnTimerATcommandsEvent(void);
 static uint8_t at_PASSWORD_comp(char *argv);
 uint8_t dwelltime;
 uint8_t parse_flag=0;
@@ -3591,12 +3589,6 @@ static uint8_t at_PASSWORD_comp(char *argv)  //BYPASS
 //		return 0;
 //  }
 //}
-
-static void OnTimerATcommandsEvent(void)
-{
-  parse_flag=0;
-  TimerStop( &ATcommandsTimer );
-}
 
 void linkwan_at_init(void)
 {

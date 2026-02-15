@@ -987,8 +987,8 @@ static void Send( void )
     AppData.Buff[i++] = (bsp_sensor_data_buff.ads_raw >> 8) & 0xFF;
     AppData.Buff[i++] = bsp_sensor_data_buff.ads_raw & 0xFF;
     
-    // 8-11: Dendrometer voltage in microvolts (external reference, gain 64)
-    int32_t dendro_voltage_uv = (int32_t)((bsp_sensor_data_buff.ads_raw * 2500000.0f) / (8388608.0f * 64.0f));
+    // 8-11: Dendrometer voltage in microvolts (external reference 5V, gain 64)
+    int32_t dendro_voltage_uv = (int32_t)((bsp_sensor_data_buff.ads_raw * 5000000.0f) / (8388608.0f * 64.0f));
     AppData.Buff[i++] = (dendro_voltage_uv >> 24) & 0xFF;
     AppData.Buff[i++] = (dendro_voltage_uv >> 16) & 0xFF;
     AppData.Buff[i++] = (dendro_voltage_uv >> 8) & 0xFF;
@@ -1001,7 +1001,7 @@ static void Send( void )
     AppData.Buff[i++] = (displacement_int >> 8) & 0xFF;
     AppData.Buff[i++] = displacement_int & 0xFF;
 
-    // 16-19: Teros channel raw ADC value (AIN2-AVSS, gain 2, PGA bypass)
+    // 16-19: Teros channel raw ADC value (AIN2-AVSS, gain 1, PGA bypass)
     AppData.Buff[i++] = (bsp_sensor_data_buff.ads_raw2 >> 24) & 0xFF;
     AppData.Buff[i++] = (bsp_sensor_data_buff.ads_raw2 >> 16) & 0xFF;
     AppData.Buff[i++] = (bsp_sensor_data_buff.ads_raw2 >> 8) & 0xFF;

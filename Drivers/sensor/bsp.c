@@ -28,9 +28,6 @@
 /* Private variables ---------------------------------------------------------*/
 
 #define VBAT_FACTOR     3.06f
-static float displacementFiltered = 0;
-static float damping = 0.95f;
-static bool firstRun = true;
 
 bool tmp117_connect_status;
 uint8_t icnumber=0;

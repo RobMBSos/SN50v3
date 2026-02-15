@@ -24,6 +24,15 @@
 #include "I2C_A.h"
 #include "lora_config.h"
 
+// Compatibility macros used by Sensirion-style I2C HAL routines below.
+// "OPEN" releases the line (input floating), "LOW" actively drives low.
+#define SDA_OPEN()  SDA_INPUT()
+#define SCL_OPEN()  SCL_INPUT()
+#define SDA_LOW()   do { SDA_OUTPUT(); gpio_write(GPIO_PORT_I2C, I2C_SDA_PIN, 0); } while (0)
+#define SCL_LOW()   do { SCL_OUTPUT(); gpio_write(GPIO_PORT_I2C, I2C_SCL_PIN, 0); } while (0)
+#define SDA_READ    gpio_read(GPIO_PORT_I2C, I2C_SDA_PIN)
+#define SCL_READ    gpio_read(GPIO_PORT_I2C, I2C_SCL_PIN)
+
 bool iic_noack=0;
 
 void I2C_GPIO_MODE_Config(void)
