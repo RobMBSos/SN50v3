@@ -1007,12 +1007,25 @@ static void Send( void )
     AppData.Buff[i++] = (bsp_sensor_data_buff.ads_raw2 >> 8) & 0xFF;
     AppData.Buff[i++] = bsp_sensor_data_buff.ads_raw2 & 0xFF;
 
-    // 20-23: Teros channel voltage in microvolts
-    int32_t teros_voltage_uv = (int32_t)(bsp_sensor_data_buff.ads_mv2 * 1000.0f);
-    AppData.Buff[i++] = (teros_voltage_uv >> 24) & 0xFF;
-    AppData.Buff[i++] = (teros_voltage_uv >> 16) & 0xFF;
-    AppData.Buff[i++] = (teros_voltage_uv >> 8) & 0xFF;
-    AppData.Buff[i++] = teros_voltage_uv & 0xFF;
+    // 20-23: Teros channel voltage in mV (scaled by 1000, decode as value/1000.0)
+    int32_t teros_mv_q1000 = (int32_t)(bsp_sensor_data_buff.ads_mv2 * 1000.0f);
+    AppData.Buff[i++] = (teros_mv_q1000 >> 24) & 0xFF;
+    AppData.Buff[i++] = (teros_mv_q1000 >> 16) & 0xFF;
+    AppData.Buff[i++] = (teros_mv_q1000 >> 8) & 0xFF;
+    AppData.Buff[i++] = teros_mv_q1000 & 0xFF;
+
+    // 24-27: TEROS volumetric water content theta (m3/m3), Equation 2 from manual
+    // theta = 4.824e-10*mV^3 - 2.278e-6*mV^2 + 3.898e-3*mV - 2.154
+    float teros_mv = bsp_sensor_data_buff.ads_mv2;
+    float teros_theta = (4.824e-10f * teros_mv * teros_mv * teros_mv)
+                      - (2.278e-6f * teros_mv * teros_mv)
+                      + (3.898e-3f * teros_mv)
+                      - 2.154f;
+    int32_t teros_theta_q1000000 = (int32_t)(teros_theta * 1000000.0f);
+    AppData.Buff[i++] = (teros_theta_q1000000 >> 24) & 0xFF;
+    AppData.Buff[i++] = (teros_theta_q1000000 >> 16) & 0xFF;
+    AppData.Buff[i++] = (teros_theta_q1000000 >> 8) & 0xFF;
+    AppData.Buff[i++] = teros_theta_q1000000 & 0xFF;
 	}
 
 	
